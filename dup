@@ -1,0 +1,195 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+		This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
+
+import os
+import sys
+import time
+import subprocess
+
+from xml.dom import minidom
+from optparse import OptionParser
+
+options = ""
+passphrase = ""
+ftp_password = ""
+backup_action = ""
+backup_files = ""
+source = ""
+target = ""
+first = False
+pipeline = {}
+postgres = []
+pre_backup_script = ""
+post_backup_script = ""
+
+def load_config(config_path):
+	global options
+	global source
+	global target
+	global passphrase
+	global ftp_password
+	global backup_action
+	global backup_files
+	global pipeline
+	global postgres
+	global pre_backup_script
+	global post_backup_script
+
+	xmldoc = minidom.parse(config_path)
+	optionlist = xmldoc.getElementsByTagName("option")
+	for s in optionlist:
+		if s.attributes['name'].value == "key" and s.firstChild != None:
+			options += " --encrypt-key %s --sign-key %s" % (s.firstChild.data, s.firstChild.data)
+		elif s.attributes['name'].value == "duplicity_options" and s.firstChild != None:
+			options += " %s" % s.firstChild.data
+		elif s.attributes['name'].value == "source" and s.firstChild != None:
+			source = s.firstChild.data
+		elif s.attributes['name'].value == "target" and s.firstChild != None:
+			target = s.firstChild.data
+		elif s.attributes['name'].value == "backup_action" and s.firstChild != None:
+			backup_action = s.firstChild.data
+		elif s.attributes['name'].value == "PASSPHRASE" and s.firstChild != None:
+			passphrase = s.firstChild.data
+		elif s.attributes['name'].value == "FTP_PASSWORD" and s.firstChild != None:
+			ftp_password = s.firstChild.data
+		elif s.attributes['name'].value == "pre_backup_script" and s.firstChild != None:
+			pre_backup_script = s.firstChild.data
+		elif s.attributes['name'].value == "post_backup_script" and s.firstChild != None:
+			post_backup_script = s.firstChild.data
+
+	backup_files_list = xmldoc.getElementsByTagName('backup_file')
+	for s in backup_files_list:
+		if s.attributes['name'].value == "exclude" and s.firstChild != None:
+			backup_files += " --exclude %s" % s.firstChild.data
+		elif s.attributes['name'].value == "include" and s.firstChild != None:
+			backup_files += " --include %s" % s.firstChild.data
+
+	pipelinelist = xmldoc.getElementsByTagName("pipe")
+	for s in pipelinelist:
+		pipeline[int(s.attributes['name'].value)] = s.firstChild.data
+
+	postgreslist = xmldoc.getElementsByTagName("pgdb")
+	for s in postgreslist:
+		pgdb = {}
+		for child in s.childNodes:
+			if child.nodeName == "name":
+				pgdb["name"] = child.firstChild.data
+			elif child.nodeName == "user":
+				pgdb["user"] = child.firstChild.data
+			elif child.nodeName == "password":
+				pgdb["password"] = child.firstChild.data
+			elif child.nodeName == "target":
+				pgdb["target"] = child.firstChild.data
+
+		postgres.append(pgdb)
+
+	if not source:
+		print "No source provided."
+		sys.exit(1)
+	if not target:
+		print "No target provided."
+		sys.exit(1)
+
+	out = subprocess.check_output("duplicity collection-status %s" % target, shell=True)
+	if "Last full backup date: none" in out:
+		action = "full"
+		first = True
+
+	if len(pipeline) == 0:
+		pipeline[1] = "backup"
+		pipeline[2] = "verify"
+
+
+def verify():
+	print "--------------------------------------------------"
+	cmd = "%s %s duplicity verify %s %s %s %s" % (("PASSPHRASE=%s" % passphrase, "")[not passphrase], ("FTP_PASSWORD=%s" % ftp_password, "")[not ftp_password], options, backup_files, target, source)
+	out = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+	print out.stdout.read()
+	print "--------------------------------------------------"
+
+def backup():
+	print "--------------------------------------------------"
+	cmd = "%s %s duplicity %s %s %s %s %s" % (("PASSPHRASE=%s" % passphrase, "")[not passphrase], ("FTP_PASSWORD=%s" % ftp_password, "")[not ftp_password], (backup_action, "full")[not backup_action], options, backup_files, source, target)
+	out = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+	print out.stdout.read()
+	print "--------------------------------------------------"
+
+def collection_status():
+	print "--------------------------------------------------"
+	cmd = "%s duplicity collection-status %s %s" % (("FTP_PASSWORD=%s" % ftp_password, "")[not ftp_password], options, target)
+	out = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+	print out.stdout.read()
+	print "--------------------------------------------------"
+
+def run_pre_backup_script():
+	if not pre_backup_script:
+		return
+
+	print "--------------------------------------------------"
+	out = subprocess.Popen(pre_backup_script, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+	print out.stdout.read()
+	print "--------------------------------------------------"
+
+def run_post_backup_script():
+	if not post_backup_script:
+		return
+
+	print "--------------------------------------------------"
+	out = subprocess.Popen(post_backup_script, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+	print out.stdout.read()
+	print "--------------------------------------------------"
+
+def postgres_dump():
+	global postgres
+
+	print "--------------------------------------------------"
+	print "Start backup of PostgreSQL databases."
+
+	timestamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
+	for pgdb in postgres:
+		cmd = "PGPASSWORD=%s pg_dump --username=%s -Fp %s | gzip -c > %s" % (pgdb["password"], pgdb["user"], pgdb["name"], os.path.join(pgdb["target"], "%s_%s.sql.gz" % (pgdb["name"], timestamp)))
+		out = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+	print "--------------------------------------------------"
+
+def run():
+	global pipeline
+
+	usage = "usage: %prog [options] config_path"
+	parser = OptionParser(usage)
+	(options, args) = parser.parse_args()
+
+	if len(args) != 1:
+		parser.print_help()
+
+	load_config(args[0])
+	for k, v in sorted(pipeline.iteritems()):
+		if v == "backup":
+			backup()
+		elif v == "verify":
+			verify()
+		elif v == "collection_status":
+			collection_status()
+		elif v == "postgres_dump":
+			postgres_dump()
+		elif v == "pre_backup_script":
+			run_pre_backup_script()
+		elif v == "post_backup_script":
+			run_post_backup_script()
+
+if __name__ == "__main__":
+	run()

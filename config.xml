@@ -1,0 +1,40 @@
+<dup>
+	<options>
+		<option name="key"></option>
+		<option name="backup_action">incremental</option>
+		<option name="source">/</option>
+		<option name="target">file:///media/backup</option>
+		<option name="PASSPHRASE">password</option>
+		<option name="FTP_PASSWORD"></option>
+		<option name="duplicity_options">--volsize 256 --include-globbing-filelist filelist</option>
+		<option name="pre_backup_script"></option>
+		<option name="post_backup_script"></option>
+	</options>
+	<backup_files>
+		<backup_file name="exclude">/home/USER/Downloads</backup_file>
+		<backup_file name="exclude">/home/USER/.cache</backup_file>
+		<backup_file name="include">/home/USER</backup_file>
+		<backup_file name="include">/var/www</backup_file>
+		<backup_file name="exclude">/usr/bin</backup_file>
+		<backup_file name="exclude">/usr/include</backup_file>
+		<backup_file name="exclude">/usr/lib</backup_file>
+		<backup_file name="include">/usr</backup_file>
+		<backup_file name="exclude">'**'</backup_file>
+	</backup_files>
+	<postgresql>
+		<pgdb>
+			<name>dbname</name>
+			<user>username</user>
+			<password>password</password>
+			<target>/tmp/PostgreSQL</target>
+		</pgdb>
+	</postgresql>
+	<pipeline>
+		<pipe name="0">pre_backup_script</pipe>
+		<pipe name="5">post_backup_script</pipe>
+		<pipe name="2">backup</pipe>
+		<pipe name="3">verify</pipe>
+		<pipe name="4">collection_status</pipe>
+		<pipe name="1">postgres_dump</pipe>
+	</pipeline>
+</dup>

@@ -1,0 +1,10 @@
+Duplicity backup script.
+==================================================
+
+Easy configurable backup script for encrypted and
+incremental backups using duplicity. All
+configurations are done in the xml file.
+
+The pipeline configuration defines the sequence
+of backup steps, if no configuration is provided
+the backup steps backup and verify are performed.
