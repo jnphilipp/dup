@@ -5,7 +5,7 @@
 		<option name="source">/</option>
 		<option name="target">file:///media/backup</option>
 		<option name="PASSPHRASE">password</option>
-		<option name="FTP_PASSWORD"></option>
+		<option name="FTP_PASSWORD">GUI</option>
 		<option name="duplicity_options">--volsize 256 --include-globbing-filelist filelist</option>
 		<option name="pre_backup_script"></option>
 		<option name="post_backup_script"></option>

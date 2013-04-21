@@ -16,10 +16,13 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import gtk
 import os
+import pygtk
+pygtk.require('2.0')
+import subprocess
 import sys
 import time
-import subprocess
 
 from xml.dom import minidom
 from optparse import OptionParser
@@ -36,6 +39,100 @@ pipeline = {}
 postgres = []
 pre_backup_script = ""
 post_backup_script = ""
+
+class PasswordDialog:
+	def __init__(self, title, check=False):
+		self._password = ""
+		self._check = check
+
+		self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
+		self.window.set_position(gtk.WIN_POS_CENTER)
+		self.window.set_title(title)
+		self.window.connect("delete_event", self.cancel_dialog)
+		self.window.connect("key-press-event", self.keypress)
+
+		vbox = gtk.VBox(False, 10)
+		vbox.set_border_width(10)
+		self.window.add(vbox)
+		vbox.show()
+
+		hboxl = gtk.HBox(False, 0)
+		vbox.pack_start(hboxl, False, True, 0)
+		hboxl.show()
+
+		label = gtk.Label("Encryption password:")
+		label.set_justify(gtk.JUSTIFY_LEFT)
+		label.set_line_wrap(True)
+		hboxl.pack_start(label, False, True, 0)
+		label.show()
+
+		self._textbox = gtk.Entry()
+		self._textbox.set_visibility(gtk.FALSE)
+		hboxl.pack_start(self._textbox, True, True, 0)
+		self._textbox.show()
+
+		if check:
+			hbox2 = gtk.HBox(False, 0)
+			vbox.pack_start(hbox2, False, True, 0)
+			hbox2.show()
+
+			label = gtk.Label("Retype password:")
+			label.set_justify(gtk.JUSTIFY_LEFT)
+			label.set_line_wrap(True)
+			hbox2.pack_start(label, False, True, 0)
+			label.show()
+
+			self._textbox2 = gtk.Entry()
+			self._textbox2.set_visibility(gtk.FALSE)
+			hbox2.pack_start(self._textbox2, True, True, 0)
+			self._textbox2.show()
+
+		hbox3 = gtk.HBox(True, 0)
+		vbox.pack_end(hbox3, False, True, 5)
+		hbox3.show()
+
+		button_save = gtk.Button("OK")
+		hbox3.pack_start(button_save, True, True, 0)
+		button_save.connect_object("clicked", self.save_dialog, None)
+		button_save.show()
+		button_cancel = gtk.Button("Cancel")
+		hbox3.pack_start(button_cancel, True, True, 0)
+		button_cancel.connect_object("clicked", self.cancel_dialog, button_cancel)
+		button_cancel.show()
+
+		self.window.set_keep_above(True)
+		self.window.show()
+
+	@property
+	def password(self):
+		return self._password
+
+	def main(self):
+		gtk.main()
+
+	def cancel_dialog(self, widget, data=None):
+		"""cancel dialog"""
+		gtk.main_quit()
+
+	def save_dialog(self, data):
+		"""save feed to config file and close add feed dialog"""
+		if self._check:
+			if self._textbox.get_text() == self._textbox2.get_text():
+				self._password = self._textbox.get_text()
+				gtk.main_quit()
+			else:
+				self._textbox.set_text("")
+				self._textbox2.set_text("")
+		else:
+			self._password = self._textbox.get_text()
+			gtk.main_quit()
+
+	def keypress(self, widget, data):
+		"""keypress handler"""
+		if data.keyval == gtk.keysyms.Escape:
+			gtk.main_quit()
+		elif data.keyval == gtk.keysyms.Return:
+			self.save_dialog(None)
 
 def load_config(config_path):
 	global options
@@ -113,6 +210,17 @@ def load_config(config_path):
 	if len(pipeline) == 0:
 		pipeline[1] = "backup"
 		pipeline[2] = "verify"
+
+	if passphrase == "GUI":
+		pwdialog = PasswordDialog("PASSPHRASE", first)
+		pwdialog.main()
+		passphrase = pwdialog.password
+
+	if ftp_password == "GUI":
+		pwdialog = PasswordDialog("FTP_PASSWORD")
+		pwdialog.main()
+		ftp_password = pwdialog.password
+
 
 
 def verify():
