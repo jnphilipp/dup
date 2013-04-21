@@ -34,7 +34,6 @@ backup_action = ""
 backup_files = ""
 source = ""
 target = ""
-first = False
 pipeline = {}
 postgres = []
 pre_backup_script = ""
@@ -48,6 +47,7 @@ class PasswordDialog:
 		self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
 		self.window.set_position(gtk.WIN_POS_CENTER)
 		self.window.set_title(title)
+		self.window.set_icon_name('deja-dup')
 		self.window.connect("delete_event", self.cancel_dialog)
 		self.window.connect("key-press-event", self.keypress)
 
@@ -147,11 +147,15 @@ def load_config(config_path):
 	global pre_backup_script
 	global post_backup_script
 
+	key = False
+	first = False
+
 	xmldoc = minidom.parse(config_path)
 	optionlist = xmldoc.getElementsByTagName("option")
 	for s in optionlist:
 		if s.attributes['name'].value == "key" and s.firstChild != None:
 			options += " --encrypt-key %s --sign-key %s" % (s.firstChild.data, s.firstChild.data)
+			key = True
 		elif s.attributes['name'].value == "duplicity_options" and s.firstChild != None:
 			options += " %s" % s.firstChild.data
 		elif s.attributes['name'].value == "source" and s.firstChild != None:
@@ -204,7 +208,7 @@ def load_config(config_path):
 
 	out = subprocess.check_output("duplicity collection-status %s" % target, shell=True)
 	if "Last full backup date: none" in out:
-		action = "full"
+		backup_action = "full"
 		first = True
 
 	if len(pipeline) == 0:
@@ -212,7 +216,7 @@ def load_config(config_path):
 		pipeline[2] = "verify"
 
 	if passphrase == "GUI":
-		pwdialog = PasswordDialog("PASSPHRASE", first)
+		pwdialog = PasswordDialog("PASSPHRASE", first and not key)
 		pwdialog.main()
 		passphrase = pwdialog.password
 
